@@ -15,7 +15,7 @@ class IsTrueValidator extends ConstraintValidator
     /**
      * The reCAPTCHA server URL's
      */
-    const RECAPTCHA_VERIFY_SERVER = 'www.google.com';
+    const RECAPTCHA_VERIFY_SERVER = 'https://www.google.com';
 
     /**
      * Construct.
@@ -41,18 +41,16 @@ class IsTrueValidator extends ConstraintValidator
         $privateKey = $this->container->getParameter('ewz_recaptcha.private_key');
 
         $remoteip   = $this->container->get('request')->server->get('REMOTE_ADDR');
-        $challenge  = $this->container->get('request')->get('recaptcha_challenge_field');
-        $response   = $this->container->get('request')->get('recaptcha_response_field');
+        $response   = $this->container->get('request')->get('g-recaptcha-response');
 
         if (
             isset($this->cache[$privateKey]) &&
             isset($this->cache[$privateKey][$remoteip]) &&
-            isset($this->cache[$privateKey][$remoteip][$challenge]) &&
-            isset($this->cache[$privateKey][$remoteip][$challenge][$response])
+            isset($this->cache[$privateKey][$remoteip][$response])
         ) {
-            $cached = $this->cache[$privateKey][$remoteip][$challenge][$response];
+            $cached = $this->cache[$privateKey][$remoteip][$response];
         } else {
-            $cached = $this->cache[$privateKey][$remoteip][$challenge][$response] = $this->checkAnswer($privateKey, $remoteip, $challenge, $response);
+            $cached = $this->cache[$privateKey][$remoteip][$response] = $this->checkAnswer($privateKey, $remoteip, $response);
         }
 
         if (!$cached) {
@@ -65,7 +63,6 @@ class IsTrueValidator extends ConstraintValidator
       *
       * @param string $privateKey
       * @param string $remoteip
-      * @param string $challenge
       * @param string $response
       * @param array $extra_params an array of extra variables to post to the server
       *
@@ -73,31 +70,26 @@ class IsTrueValidator extends ConstraintValidator
       *
       * @return Boolean
       */
-    private function checkAnswer($privateKey, $remoteip, $challenge, $response, $extra_params = array())
+    private function checkAnswer($privateKey, $remoteip, $response, $extra_params = array())
     {
         if ($remoteip == null || $remoteip == '') {
             throw new ValidatorException('For security reasons, you must pass the remote ip to reCAPTCHA');
         }
 
         // discard spam submissions
-        if ($challenge == null || strlen($challenge) == 0 || $response == null || strlen($response) == 0) {
+        if ($response == null || strlen($response) == 0) {
             return false;
         }
 
-        $response = $this->httpPost(self::RECAPTCHA_VERIFY_SERVER, '/recaptcha/api/verify', array(
-            'privatekey' => $privateKey,
+        $response = $this->httpPost(self::RECAPTCHA_VERIFY_SERVER, '/recaptcha/api/siteverify', array(
+            'secret' => $privateKey,
             'remoteip'   => $remoteip,
-            'challenge'  => $challenge,
             'response'   => $response
         ) + $extra_params);
 
-        $answers = explode ("\n", $response [1]);
+        $response = json_decode($response);
 
-        if (trim($answers[0]) == 'true') {
-            return true;
-        }
-
-        return false;
+        return $response->success; 
     }
 
     /**
@@ -110,34 +102,37 @@ class IsTrueValidator extends ConstraintValidator
      *
      * @return array response
      */
-    private function httpPost($host, $path, $data, $port = 80)
+    private function httpPost($host, $path, $data, $port = 443)
     {
         $req = $this->getQSEncode($data);
 
-        $http_request  = "POST $path HTTP/1.0\r\n";
-        $http_request .= "Host: $host\r\n";
-        $http_request .= "Content-Type: application/x-www-form-urlencoded;\r\n";
-        $http_request .= "Content-Length: ".strlen($req)."\r\n";
-        $http_request .= "User-Agent: reCAPTCHA/PHP\r\n";
-        $http_request .= "\r\n";
-        $http_request .= $req;
+        $curl = curl_init();
 
-        $response = null;
-        if (!$fs = @fsockopen($host, $port, $errno, $errstr, 10)) {
-            throw new ValidatorException('Could not open socket');
+        curl_setopt_array($curl, array(
+            CURLOPT_URL => "$host$path",
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_ENCODING => "",
+            CURLOPT_MAXREDIRS => 10,
+            CURLOPT_TIMEOUT => 5,
+            CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+            CURLOPT_CUSTOMREQUEST => "POST",
+            CURLOPT_POSTFIELDS => $req,
+            CURLOPT_HTTPHEADER => array(
+                "cache-control: no-cache",
+                "content-type: application/x-www-form-urlencoded",
+            ),
+        ));
+
+        $response = curl_exec($curl);
+        $err = curl_error($curl);
+
+        curl_close($curl);
+
+        if ($err) {
+            throw new ValidatorException('cURL Error #:' . $err);
+        } else {
+            return $response;
         }
-
-        fwrite($fs, $http_request);
-
-        while (!feof($fs)) {
-            $response .= fgets($fs, 1160); // one TCP-IP packet
-        }
-
-        fclose($fs);
-
-        $response = explode("\r\n\r\n", $response, 2);
-
-        return $response;
     }
 
     /**

@@ -7,11 +7,7 @@
             </script>
         {% endif %}
         <script src="{{ form.vars.url_challenge }}" type="text/javascript"></script>
-        <noscript>
-            <iframe src="{{ form.vars.url_noscript }}" height="300" width="500"></iframe><br/>
-            <textarea name="recaptcha_challenge_field" rows="3" cols="40"></textarea>
-            <input type="hidden" name="recaptcha_response_field" value="manual_challenge"/>
-        </noscript>
+        <div class="g-recaptcha" data-sitekey="{{ form.vars.public_key }}"></div>
     {% endif %}
 {% endspaceless %}
 {% endblock ewz_recaptcha_widget %}

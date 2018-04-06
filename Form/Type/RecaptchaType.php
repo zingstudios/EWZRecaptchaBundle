@@ -17,7 +17,7 @@ class RecaptchaType extends AbstractType
     /**
      * The reCAPTCHA server URL's
      */
-    const RECAPTCHA_API_SERVER        = '//www.google.com/recaptcha/api';
+    const RECAPTCHA_API_SERVER        = '//www.google.com/recaptcha/api.js';
     const RECAPTCHA_API_JS_SERVER     = '//www.google.com/recaptcha/api/js/recaptcha_ajax.js';
 
     /**
@@ -76,7 +76,7 @@ class RecaptchaType extends AbstractType
         $server = self::RECAPTCHA_API_SERVER;
 
         $view->vars = array_replace($view->vars, array(
-            'url_challenge' => sprintf('%s/challenge?k=%s', $server, $this->publicKey),
+            'url_challenge' => $server,
             'url_noscript'  => sprintf('%s/noscript?k=%s', $server, $this->publicKey),
             'public_key'    => $this->publicKey,
         ));
